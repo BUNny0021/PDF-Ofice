@@ -11,7 +11,7 @@ USER root
 # Update package lists and install LibreOffice and Poppler, then clean up.
 # --no-install-recommends keeps the image size smaller.
 RUN apt-get update && \
-    apt-get install -y libreoffice poppler-utils --no-install-recommends && \
+    apt-get install -y libreoffice poppler-utils fonts-liberation --no-install-recommends && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
