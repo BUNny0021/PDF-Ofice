@@ -40,8 +40,12 @@ const handleError = (res, err, friendlyMessage, ...filesToClean) => {
 const performLibreOfficeConversion = async (res, file, outputExtension) => {
     if (!file) return res.status(400).json({ message: 'No file uploaded.' });
     
-    const { path: inputPath, originalname } = file;
-    const outputFilename = `${path.parse(originalname).name}.${outputExtension}`;
+    const { path: inputPath } = file;
+    
+    // THIS IS THE FIX: Build the output filename from the input path (the server-side filename),
+    // not from the original filename from the user's computer.
+    const outputFilename = `${path.parse(inputPath).name}.${outputExtension}`;
+    
     const outputDir = path.dirname(inputPath);
     const expectedOutputPath = path.join(outputDir, outputFilename);
 
@@ -55,7 +59,10 @@ const performLibreOfficeConversion = async (res, file, outputExtension) => {
             return handleError(res, new Error(stderr || error.message), `LibreOffice failed to convert the file.`);
         }
         try {
+            // Check if the output file was actually created with the correct name
             await fs.access(expectedOutputPath);
+            
+            // Send the correctly named file for download
             res.download(expectedOutputPath, outputFilename, (err) => {
                 if (err) console.error("Download failed:", err);
                 cleanupFiles(inputPath, expectedOutputPath);
