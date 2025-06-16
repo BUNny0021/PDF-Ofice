@@ -10,18 +10,16 @@ const ExcelJS = require('exceljs');
 const pdf = require('pdf-parse');
 
 // --- AGGRESSIVE DEBUGGING FIX for pdf-poppler ---
-// We will log to the console to prove this code is being executed and to see what's happening.
-console.log('Server script is starting up...');
-console.log(`Current platform detected: ${process.platform}`);
+console.log('--- SERVER.JS SCRIPT STARTING (VERSION WITH DEBUG LOGS) ---');
+console.log(`--- Current platform detected: ${process.platform} ---`);
 
 if (process.platform === 'linux') {
-    console.log('PLATFORM IS LINUX: Attempting to set poppler path.');
+    console.log('--- PLATFORM IS LINUX: Attempting to set poppler path. ---');
     poppler.path = '/usr/bin';
-    console.log('Poppler path has been set to /usr/bin. The application will now continue to load.');
+    console.log('--- Poppler path has been set to /usr/bin. ---');
 } else {
-    console.log(`PLATFORM IS ${process.platform}: Skipping poppler path configuration.`);
+    console.log(`--- PLATFORM IS ${process.platform}: Skipping poppler path configuration. ---`);
 }
-
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -29,7 +27,7 @@ const port = process.env.PORT || 3000;
 // Setup static files and upload directory
 app.use(express.static('public'));
 const uploadDir = path.join(__dirname, 'uploads');
-fs.mkdir(uploadDir, { recursive: true }); // Ensure upload directory exists
+fs.mkdir(uploadDir, { recursive: true });
 
 // Multer setup for file uploads
 const storage = multer.diskStorage({
@@ -51,8 +49,7 @@ const cleanupFiles = async (...files) => {
   }
 };
 
-// --- API ENDPOINTS FOR EACH TOOL ---
-
+// ... THE REST OF YOUR CODE (endpoints) REMAINS THE SAME ...
 // 1. Merge PDF
 app.post('/api/merge', upload.array('files'), async (req, res) => {
   let paths = req.files.map(f => f.path);
