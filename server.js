@@ -36,6 +36,7 @@ const handleError = (res, err, friendlyMessage, ...filesToClean) => {
     res.status(500).json({ message: friendlyMessage, error: errorMessage });
 };
 
+// FINAL, DIRECT LIBREOFFICE CONVERSION FUNCTION
 const performLibreOfficeConversion = async (res, file, outputExtension) => {
     if (!file) return res.status(400).json({ message: 'No file uploaded.' });
     
@@ -44,7 +45,8 @@ const performLibreOfficeConversion = async (res, file, outputExtension) => {
     const outputDir = path.dirname(inputPath);
     const expectedOutputPath = path.join(outputDir, outputFilename);
 
-    const command = `/usr/bin/libreoffice --headless --convert-to ${outputExtension} --outdir "${outputDir}" "${inputPath}"`;
+    // The standard command to call LibreOffice in a Debian environment.
+    const command = `soffice --headless --convert-to ${outputExtension} --outdir "${outputDir}" "${inputPath}"`;
 
     exec(command, async (error, stdout, stderr) => {
         if (error) {
@@ -68,6 +70,7 @@ const performLibreOfficeConversion = async (res, file, outputExtension) => {
 app.post('/api/pdftoword', upload.single('file'), (req, res) => performLibreOfficeConversion(res, req.file, 'docx'));
 app.post('/api/wordtopdf', upload.single('file'), (req, res) => performLibreOfficeConversion(res, req.file, 'pdf'));
 app.post('/api/exceltopdf', upload.single('file'), (req, res) => performLibreOfficeConversion(res, req.file, 'pdf'));
+
 app.post('/api/pdftojpg', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     const inputPath = req.file.path;
@@ -79,7 +82,7 @@ app.post('/api/pdftojpg', upload.single('file'), (req, res) => {
         res.download(firstPagePath, `${path.parse(req.file.originalname).name}.jpg`, () => cleanupFiles(inputPath, firstPagePath));
     });
 });
-// The rest of the endpoints...
+
 app.post('/api/merge', upload.array('files'), async (req, res) => { if (!req.files || req.files.length === 0) return res.status(400).json({ message: 'No files uploaded.' }); const paths = req.files.map(f => f.path); try { const mergedPdf = await PDFDocument.create(); for (const pdfPath of paths) { const pdfBytes = await fs.readFile(pdfPath); const pdfDoc = await PDFDocument.load(pdfBytes); const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices()); copiedPages.forEach(page => mergedPdf.addPage(page)); } const mergedPdfBytes = await mergedPdf.save(); res.setHeader('Content-Disposition', 'attachment; filename=merged.pdf'); res.setHeader('Content-Type', 'application/pdf'); res.send(Buffer.from(mergedPdfBytes)); } catch (err) { handleError(res, err, 'Failed to merge PDFs.'); } finally { cleanupFiles(...paths); } });
 app.post('/api/split', upload.single('file'), async (req, res) => { if (!req.file) return res.status(400).json({ message: 'No file uploaded.' }); let inputPath = req.file.path; try { await PDFDocument.load(await fs.readFile(inputPath)); res.download(inputPath, 'split-result.pdf', () => cleanupFiles(inputPath)); } catch (err) { handleError(res, err, 'Failed to split PDF.', inputPath); } });
 app.post('/api/compress', upload.single('file'), (req, res) => { if (!req.file) return res.status(400).json({ message: 'No file uploaded.' }); res.download(req.file.path, `compressed-${req.file.originalname}`, () => cleanupFiles(req.file.path)); });
