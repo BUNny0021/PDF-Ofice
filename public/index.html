@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Changed Title -->
+    <title>PDF Ofice - Simple & Fast PDF Tools</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="p-4 border-b bg-white">
+            <div class="container mx-auto flex justify-between items-center">
+                <a href="/" class="flex items-center space-x-2">
+                    <!-- Changed Logo Alt Text -->
+                    <img src="/logo.svg" alt="PDF Ofice Logo" class="h-10">
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow container mx-auto p-4 md:p-8">
+
+            <!-- Tool Grid (Homepage) -->
+            <section id="tool-grid" class="text-center transition-opacity duration-500">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Your Online PDF Toolkit</h1>
+                <p class="text-lg text-gray-500 mt-2 mb-12">Simple, fast, and free tools to manage your PDFs.</p>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                    <!-- Tools will be injected here by JavaScript -->
+                </div>
+            </section>
+
+            <!-- Tool Processor Page (Initially hidden) -->
+            <section id="tool-processor" class="hidden transition-opacity duration-500">
+                <!-- Processor content will be injected here -->
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white p-6 mt-12 border-t">
+            <div class="container mx-auto text-center text-gray-500">
+                <!-- Changed Copyright -->
+                <p>© 2025 PDF Ofice</p>
+                <div class="mt-2 space-x-4">
+                    <a href="#" class="hover:text-blue-600">About</a>
+                    <a href="#" class="hover:text-blue-600">Privacy Policy</a>
+                    <a href="#" class="hover:text-blue-600">Contact</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- JS Templates (No changes needed here) -->
+    <template id="tool-card-template">
+        <div class="tool-card bg-white p-6 rounded-xl shadow-sm hover:shadow-lg transition-shadow cursor-pointer border border-gray-200 flex flex-col items-center text-center">
+            <div class="icon-container bg-blue-100 text-blue-600 rounded-full w-16 h-16 flex items-center justify-center mb-4">
+                <!-- SVG Icon goes here -->
+            </div>
+            <h3 class="font-semibold text-gray-800"></h3>
+            <p class="text-sm text-gray-500 mt-1"></p>
+        </div>
+    </template>
+
+    <template id="processor-page-template">
+        <div class="max-w-3xl mx-auto">
+            <button id="back-to-home" class="mb-6 text-blue-600 hover:underline">← Back to all tools</button>
+            <div class="bg-white p-8 rounded-xl shadow-md border border-gray-200">
+                <div class="flex items-center space-x-4">
+                    <div class="icon-container bg-blue-100 text-blue-600 rounded-full w-16 h-16 flex items-center justify-center flex-shrink-0">
+                       <!-- SVG Icon goes here -->
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900"></h2>
+                        <p class="text-gray-500"></p>
+                    </div>
+                </div>
+                <div id="upload-box" class="mt-8 border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 bg-gray-50">
+                    <input type="file" id="file-input" class="hidden" multiple>
+                    <p class="text-lg font-semibold text-blue-600">Drag & drop files here</p>
+                    <p class="text-gray-500 mt-1">or</p>
+                    <button id="select-file-btn" class="mt-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">Select Files</button>
+                </div>
+                 <!-- Password input for protect/unlock -->
+                <div id="password-section" class="hidden mt-4">
+                    <label for="password-input" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password-input" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Enter password">
+                </div>
+                <div id="processing-section" class="hidden mt-6 text-center">
+                    <p class="text-lg font-semibold animate-pulse">Processing...</p>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                        <div class="bg-blue-600 h-2.5 rounded-full progress-bar"></div>
+                    </div>
+                </div>
+                <div id="download-section" class="hidden mt-6 text-center">
+                     <p class="text-xl font-bold text-green-600 mb-4">Your file is ready!</p>
+                     <a id="download-btn" class="w-full md:w-auto inline-block bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 transition text-lg">
+                        Download File
+                    </a>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script src="script.js"></script>
+</body>
+</html>

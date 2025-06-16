@@ -1,0 +1,172 @@
+document.addEventListener('DOMContentLoaded', () => {
+    const tools = [
+        { id: 'merge', name: 'Merge PDF', desc: 'Combine multiple PDFs into one.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m2 5.5V17a2 2 0 00-2-2h-2m-2-4H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-3.5m-2-5l2.5-2.5" />', endpoint: '/api/merge', multiple: true },
+        { id: 'split', name: 'Split PDF', desc: 'Extract one or more pages from a PDF.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M14.121 14.121L19 19m-4.879-4.879L19.707 9.5M14.121 14.121L9.5 19.707M4 14.828v-5.656a2 2 0 01.586-1.414l2.828-2.828a2 2 0 011.414-.586h5.656a2 2 0 011.414.586l2.828 2.828a2 2 0 01.586 1.414v5.656a2 2 0 01-.586 1.414l-2.828 2.828a2 2 0 01-1.414.586h-5.656a2 2 0 01-1.414-.586L4.586 16.242A2 2 0 014 14.828z" />', endpoint: '/api/split', multiple: false },
+        { id: 'compress', name: 'Compress PDF', desc: 'Reduce the file size of your PDF.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5v4m0 0h4" />', endpoint: '/api/compress', multiple: false },
+        { id: 'pdftoword', name: 'PDF to Word', desc: 'Convert PDF files to editable DOCX.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />', endpoint: '/api/pdftoword', multiple: false },
+        { id: 'wordtopdf', name: 'Word to PDF', desc: 'Convert DOCX files to PDF.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />', endpoint: '/api/wordtopdf', multiple: false },
+        { id: 'jpgtopdf', name: 'JPG to PDF', desc: 'Convert JPG images to PDF.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />', endpoint: '/api/jpgtopdf', multiple: true },
+        { id: 'pdftojpg', name: 'PDF to JPG', desc: 'Convert each PDF page into a JPG image.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />', endpoint: '/api/pdftojpg', multiple: false },
+        { id: 'rotate', name: 'Rotate PDF', desc: 'Rotate all pages in a PDF file.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L8 9l9-5 5 5-7 7z" />', endpoint: '/api/rotate', multiple: false },
+        { id: 'unlock', name: 'Unlock PDF', desc: 'Remove password and restrictions from a PDF.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />', endpoint: '/api/unlock', multiple: false, needsPassword: true },
+        { id: 'protect', name: 'Protect PDF', desc: 'Add a password to protect your PDF.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 20.417V18a2 2 0 012-2h14a2 2 0 012 2v2.417c0 .92-.32 1.79-.882 2.502-1.257 1.488-3.264 2.1-5.518 2.113A11.953 11.953 0 0112 21c-2.175 0-4.2-.586-5.998-1.583" />', endpoint: '/api/protect', multiple: false, needsPassword: true },
+        { id: 'pdftoexcel', name: 'PDF to Excel', desc: 'Extract data from PDF to XLS.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />', endpoint: '/api/pdftoexcel', multiple: false },
+        { id: 'exceltopdf', name: 'Excel to PDF', desc: 'Convert XLS files to PDF.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />', endpoint: '/api/exceltopdf', multiple: false },
+    ];
+
+    const toolGrid = document.getElementById('tool-grid');
+    const toolProcessor = document.getElementById('tool-processor');
+    const toolCardTemplate = document.getElementById('tool-card-template');
+
+    // Populate the tool grid on the homepage
+    tools.forEach(tool => {
+        const card = toolCardTemplate.content.cloneNode(true).querySelector('.tool-card');
+        card.querySelector('.icon-container').innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">${tool.icon}</svg>`;
+        card.querySelector('h3').textContent = tool.name;
+        card.querySelector('p').textContent = tool.desc;
+        card.addEventListener('click', () => showProcessor(tool));
+        toolGrid.querySelector('.grid').appendChild(card);
+    });
+
+    function showProcessor(tool) {
+        toolGrid.classList.add('fade-out');
+        setTimeout(() => {
+            toolGrid.classList.add('hidden');
+            toolProcessor.innerHTML = ''; // Clear previous content
+
+            const processorTemplate = document.getElementById('processor-page-template');
+            const processorPage = processorTemplate.content.cloneNode(true);
+            
+            // Populate processor page
+            processorPage.querySelector('.icon-container').innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">${tool.icon}</svg>`;
+            processorPage.querySelector('h2').textContent = tool.name;
+            processorPage.querySelector('p').textContent = tool.desc;
+
+            toolProcessor.appendChild(processorPage);
+            toolProcessor.classList.remove('hidden', 'fade-out');
+            
+            // Setup event listeners for the new page
+            setupProcessorEventListeners(tool);
+        }, 300);
+    }
+
+    function showHomepage() {
+        toolProcessor.classList.add('fade-out');
+        setTimeout(() => {
+            toolProcessor.classList.add('hidden');
+            toolGrid.classList.remove('hidden', 'fade-out');
+        }, 300);
+    }
+
+    function setupProcessorEventListeners(tool) {
+        const backBtn = document.getElementById('back-to-home');
+        const uploadBox = document.getElementById('upload-box');
+        const fileInput = document.getElementById('file-input');
+        const selectFileBtn = document.getElementById('select-file-btn');
+        const passwordSection = document.getElementById('password-section');
+        const passwordInput = document.getElementById('password-input');
+
+        backBtn.addEventListener('click', showHomepage);
+
+        // Configure file input based on tool
+        fileInput.multiple = tool.multiple;
+
+        // Show password field if needed
+        if (tool.needsPassword) {
+            passwordSection.classList.remove('hidden');
+        }
+
+        selectFileBtn.addEventListener('click', () => fileInput.click());
+        uploadBox.addEventListener('click', () => fileInput.click());
+
+        // Drag and drop listeners
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadBox.addEventListener(eventName, preventDefaults, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadBox.addEventListener(eventName, () => uploadBox.classList.add('drag-over'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadBox.addEventListener(eventName, () => uploadBox.classList.remove('drag-over'), false);
+        });
+
+        uploadBox.addEventListener('drop', handleDrop, false);
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function handleDrop(e) {
+            let dt = e.dataTransfer;
+            let files = dt.files;
+            handleFiles(files);
+        }
+
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+
+            const formData = new FormData();
+            for (const file of files) {
+                formData.append('files', file); // Backend expects 'files' for multiple
+            }
+            // For single file uploads, many endpoints expect 'file'
+            if (!tool.multiple) {
+                formData.delete('files');
+                formData.append('file', files[0]);
+            }
+             if (tool.needsPassword) {
+                formData.append('password', passwordInput.value);
+            }
+
+            const processingSection = document.getElementById('processing-section');
+            const downloadSection = document.getElementById('download-section');
+            
+            uploadBox.classList.add('hidden');
+            passwordSection.classList.add('hidden');
+            processingSection.classList.remove('hidden');
+
+            try {
+                const response = await fetch(tool.endpoint, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || `HTTP error! status: ${response.status}`);
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const downloadBtn = document.getElementById('download-btn');
+                const contentDisposition = response.headers.get('content-disposition');
+                let filename = 'download';
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="(.+?)"/);
+                    if (filenameMatch.length === 2)
+                        filename = filenameMatch[1];
+                }
+
+                downloadBtn.href = url;
+                downloadBtn.download = filename;
+                
+                processingSection.classList.add('hidden');
+                downloadSection.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Upload failed:', error);
+                alert(`An error occurred: ${error.message}`);
+                // Reset UI
+                processingSection.classList.add('hidden');
+                uploadBox.classList.remove('hidden');
+                if (tool.needsPassword) {
+                   passwordSection.classList.remove('hidden');
+                }
+            }
+        }
+    }
+});
