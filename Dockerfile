@@ -1,15 +1,17 @@
 # Use an official Node.js runtime as the base image.
-# We're using Node 20 as it's the current LTS (Long-Term Support) version.
 FROM node:20-slim
 
 # Set the working directory inside the container
 WORKDIR /usr/src/app
 
-# Temporarily switch to the root user to install system dependencies
+# ---- CRITICAL FIX 1: Set HOME environment for LibreOffice ----
+# This prevents silent crashes related to user profile creation.
+ENV HOME /usr/src/app
+
+# Switch to root user to install system dependencies
 USER root
 
-# Brute-force install of ALL recommended LibreOffice dependencies and extra fonts.
-# THIS WILL MAKE THE BUILD MUCH LONGER, BUT IT IS NECESSARY.
+# Install ALL recommended dependencies for LibreOffice and our fonts
 RUN apt-get update && \
     apt-get install -y \
     libreoffice \
@@ -19,17 +21,26 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy package.json and package-lock.json (if it exists)
-COPY package*.json ./
+# ---- CRITICAL FIX 2: Create uploads dir and set permissions ----
+# We create the directory and give the 'node' user ownership of everything.
+# This guarantees write permissions.
+RUN mkdir -p /usr/src/app/uploads && \
+    chown -R node:node /usr/src/app
 
-# Install app dependencies
+# Switch to the non-root 'node' user for security and to run the app
+USER node
+
+# Copy package files (they will be owned by 'node' now)
+COPY --chown=node:node package*.json ./
+
+# Now install npm packages as the 'node' user
 RUN npm install
 
-# Copy the rest of your application code into the container
-COPY . .
+# Copy the rest of your application code (also owned by 'node')
+COPY --chown=node:node . .
 
-# Your app runs on port 3000, so we expose it
+# Expose the port
 EXPOSE 3000
 
-# The command to run your application
+# The command to run your application as the 'node' user
 CMD ["npm", "start"]
