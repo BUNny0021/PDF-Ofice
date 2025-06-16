@@ -9,6 +9,13 @@ const Jimp = require('jimp');
 const ExcelJS = require('exceljs');
 const pdf = require('pdf-parse');
 
+// --- FIX: Configure pdf-poppler for Linux Environment ---
+// The 'pdf-poppler' library needs an explicit path to the poppler binaries on Linux.
+// We installed these tools to '/usr/bin' in our Dockerfile.
+if (process.platform === 'linux') {
+    poppler.path = '/usr/bin';
+}
+
 const app = express();
 const port = process.env.PORT || 3000;
 
