@@ -1,19 +1,14 @@
-// server.js - FINAL VERSION WITH MEMORY BUFFER FIX FOR LIBREOFFICE
+// server.js - FINAL VERSION. NO MORE LIBRARIES FOR CONVERSION.
 
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
 const { exec } = require('child_process');
-const { promisify } = require('util');
 const { PDFDocument } = require('pdf-lib');
-const libre = require('libreoffice-convert');
 const Jimp = require('jimp');
 const ExcelJS = require('exceljs');
 const pdf = require('pdf-parse');
-
-// Make libreoffice-convert's callback-based function into a modern async/await function
-const convertAsync = promisify(libre.convert);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -31,9 +26,7 @@ const upload = multer({ storage: storage });
 const cleanupFiles = async (...files) => {
   for (const file of files) {
     if (file && typeof file === 'string') {
-      try {
-        await fs.unlink(file);
-      } catch (err) { /* Don't crash if cleanup fails */ }
+      try { await fs.unlink(file); } catch (err) { /* ignore */ }
     }
   }
 };
@@ -42,57 +35,55 @@ const handleError = (res, err, friendlyMessage, ...filesToClean) => {
     const errorMessage = err.message || 'An unknown error occurred.';
     console.error(`SERVER ERROR: ${friendlyMessage}. Details:`, err);
     cleanupFiles(...filesToClean);
-    res.status(500).json({ 
-        message: friendlyMessage, 
-        error: errorMessage
+    res.status(500).json({ message: friendlyMessage, error: errorMessage });
+};
+
+// NEW, DIRECT LIBREOFFICE CONVERSION FUNCTION
+const performLibreOfficeConversion = async (res, file, outputExtension) => {
+    if (!file) return res.status(400).json({ message: 'No file uploaded.' });
+    
+    const { path: inputPath, originalname } = file;
+    const outputFilename = `${path.parse(originalname).name}.${outputExtension}`;
+    const outputDir = path.dirname(inputPath);
+    const expectedOutputPath = path.join(outputDir, outputFilename);
+
+    // Command to call LibreOffice directly.
+    // --headless: run without UI. --convert-to: target format. --outdir: where to save.
+    const command = `soffice --headless --convert-to ${outputExtension} --outdir "${outputDir}" "${inputPath}"`;
+
+    exec(command, async (error, stdout, stderr) => {
+        if (error) {
+            // THIS WILL FINALLY SHOW US THE REAL LIBREOFFICE ERROR
+            console.error('LibreOffice Execution Error:', error);
+            console.error('LibreOffice Stderr:', stderr);
+            return handleError(res, new Error(stderr || error.message), `LibreOffice failed to convert the file.`);
+        }
+
+        try {
+            // Check if the output file was actually created
+            await fs.access(expectedOutputPath);
+            
+            // Send the file for download
+            res.download(expectedOutputPath, outputFilename, (err) => {
+                if (err) {
+                    console.error("Download failed:", err);
+                }
+                // Clean up both the original and converted file
+                cleanupFiles(inputPath, expectedOutputPath);
+            });
+        } catch (downloadErr) {
+            // This catches the 'File not found' error if it still happens
+            console.error("Output file not found after conversion:", downloadErr);
+            handleError(res, downloadErr, 'Conversion seemed to succeed, but the output file could not be found.', inputPath);
+        }
     });
 };
 
-// --- API ENDPOINTS WITH THE FIX ---
-
-// Helper function for all LibreOffice conversions
-const performConversion = async (res, file, outputExtension) => {
-    if (!file) return res.status(400).json({ message: 'No file uploaded.' });
-    const { path: inputPath, originalname } = file;
-    const outputFilename = `${path.parse(originalname).name}.${outputExtension}`;
-
-    try {
-        const fileBuffer = await fs.readFile(inputPath);
-        
-        // Let the library return the converted file as a memory buffer
-        const outputBuffer = await convertAsync(fileBuffer, outputExtension, undefined);
-        
-        // Send the buffer directly to the user for download
-        res.setHeader('Content-Disposition', `attachment; filename=${outputFilename}`);
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.send(outputBuffer);
-
-    } catch (err) {
-        handleError(res, err, `Failed to convert file to ${outputExtension}.`);
-    } finally {
-        // Always clean up the original uploaded file
-        cleanupFiles(inputPath);
-    }
-};
-
-// PDF to Word
-app.post('/api/pdftoword', upload.single('file'), (req, res) => {
-    performConversion(res, req.file, 'docx');
-});
-
-// Word to PDF
-app.post('/api/wordtopdf', upload.single('file'), (req, res) => {
-    performConversion(res, req.file, 'pdf');
-});
-
-// Excel to PDF
-app.post('/api/exceltopdf', upload.single('file'), (req, res) => {
-    performConversion(res, req.file, 'pdf');
-});
+app.post('/api/pdftoword', upload.single('file'), (req, res) => performLibreOfficeConversion(res, req.file, 'docx'));
+app.post('/api/wordtopdf', upload.single('file'), (req, res) => performLibreOfficeConversion(res, req.file, 'pdf'));
+app.post('/api/exceltopdf', upload.single('file'), (req, res) => performLibreOfficeConversion(res, req.file, 'pdf'));
 
 // --- Other Endpoints ---
-
-// Merge PDF
 app.post('/api/merge', upload.array('files'), async (req, res) => {
   if (!req.files || req.files.length === 0) return res.status(400).json({ message: 'No files uploaded.' });
   const paths = req.files.map(f => f.path);
@@ -104,39 +95,25 @@ app.post('/api/merge', upload.array('files'), async (req, res) => {
       const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
       copiedPages.forEach(page => mergedPdf.addPage(page));
     }
-    const mergedPdfBytes = await pdfDoc.save();
+    const mergedPdfBytes = await mergedPdf.save();
     res.setHeader('Content-Disposition', 'attachment; filename=merged.pdf');
     res.setHeader('Content-Type', 'application/pdf');
     res.send(Buffer.from(mergedPdfBytes));
-  } catch (err) {
-    handleError(res, err, 'Failed to merge PDFs.');
-  } finally {
-      cleanupFiles(...paths);
-  }
+  } catch (err) { handleError(res, err, 'Failed to merge PDFs.'); }
+  finally { cleanupFiles(...paths); }
 });
-
-// Split PDF
 app.post('/api/split', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     let inputPath = req.file.path;
     try {
-        const originalPdfBytes = await fs.readFile(inputPath);
-        const originalPdf = await PDFDocument.load(originalPdfBytes);
-        console.log(`PDF has ${originalPdf.getPageCount()} pages. Placeholder returns original.`);
+        await PDFDocument.load(await fs.readFile(inputPath));
         res.download(inputPath, 'split-result.pdf', () => cleanupFiles(inputPath));
-    } catch (err) {
-        handleError(res, err, 'Failed to split PDF.', inputPath);
-    }
+    } catch (err) { handleError(res, err, 'Failed to split PDF.', inputPath); }
 });
-
-// Compress PDF (Placeholder)
 app.post('/api/compress', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-    let inputPath = req.file.path;
-    res.download(inputPath, `compressed-${req.file.originalname}`, () => cleanupFiles(inputPath));
+    res.download(req.file.path, `compressed-${req.file.originalname}`, () => cleanupFiles(req.file.path));
 });
-
-// JPG to PDF
 app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).json({ message: 'No files uploaded.' });
     const paths = req.files.map(f => f.path);
@@ -153,30 +130,20 @@ app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
         res.setHeader('Content-Disposition', 'attachment; filename=converted.pdf');
         res.setHeader('Content-Type', 'application/pdf');
         res.send(Buffer.from(pdfBytes));
-    } catch (err) {
-        handleError(res, err, 'Failed to convert JPG to PDF.');
-    } finally {
-        cleanupFiles(...paths);
-    }
+    } catch (err) { handleError(res, err, 'Failed to convert JPG to PDF.'); }
+    finally { cleanupFiles(...paths); }
 });
-
-// PDF to JPG
 app.post('/api/pdftojpg', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     const inputPath = req.file.path;
     const outputPrefix = path.join(uploadDir, path.parse(inputPath).name);
     const command = `pdftocairo -jpeg "${inputPath}" "${outputPrefix}"`;
-    exec(command, (error, stdout, stderr) => {
+    exec(command, (error) => {
         if (error) { return handleError(res, error, 'Failed to convert PDF to JPG.', inputPath); }
         const firstPagePath = `${outputPrefix}-1.jpg`;
-        res.download(firstPagePath, `${path.parse(req.file.originalname).name}.jpg`, (err) => {
-            if (err) console.error('Download error:', err);
-            cleanupFiles(inputPath, firstPagePath);
-        });
+        res.download(firstPagePath, `${path.parse(req.file.originalname).name}.jpg`, () => cleanupFiles(inputPath, firstPagePath));
     });
 });
-
-// Rotate PDF
 app.post('/api/rotate', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     const inputPath = req.file.path;
@@ -188,18 +155,13 @@ app.post('/api/rotate', upload.single('file'), async (req, res) => {
         res.setHeader('Content-Disposition', 'attachment; filename=rotated.pdf');
         res.setHeader('Content-Type', 'application/pdf');
         res.send(Buffer.from(rotatedPdfBytes));
-    } catch (err) {
-        handleError(res, err, 'Failed to rotate PDF.');
-    } finally {
-        cleanupFiles(inputPath);
-    }
+    } catch (err) { handleError(res, err, 'Failed to rotate PDF.'); }
+    finally { cleanupFiles(inputPath); }
 });
-
-// Unlock PDF
 app.post('/api/unlock', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     const { password } = req.body;
-    if (!password) return res.status(400).json({ message: 'Password is required for unlocking.' });
+    if (!password) return res.status(400).json({ message: 'Password is required.' });
     const inputPath = req.file.path;
     try {
         const pdfBytes = await fs.readFile(inputPath);
@@ -208,18 +170,13 @@ app.post('/api/unlock', upload.single('file'), async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename=unlocked-${req.file.originalname}`);
         res.setHeader('Content-Type', 'application/pdf');
         res.send(Buffer.from(unlockedBytes));
-    } catch (err) {
-        handleError(res, err, 'Failed to unlock PDF. Check password.');
-    } finally {
-        cleanupFiles(inputPath);
-    }
+    } catch (err) { handleError(res, err, 'Failed to unlock PDF. Check password.'); }
+    finally { cleanupFiles(inputPath); }
 });
-
-// Protect PDF
 app.post('/api/protect', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     const { password } = req.body;
-    if (!password) return res.status(400).json({ message: 'Password is required for protecting.' });
+    if (!password) return res.status(400).json({ message: 'Password is required.' });
     const inputPath = req.file.path;
     try {
         const pdfBytes = await fs.readFile(inputPath);
@@ -228,14 +185,9 @@ app.post('/api/protect', upload.single('file'), async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename=protected-${req.file.originalname}`);
         res.setHeader('Content-Type', 'application/pdf');
         res.send(Buffer.from(protectedBytes));
-    } catch (err) {
-        handleError(res, err, 'Failed to protect PDF.');
-    } finally {
-        cleanupFiles(inputPath);
-    }
+    } catch (err) { handleError(res, err, 'Failed to protect PDF.'); }
+    finally { cleanupFiles(inputPath); }
 });
-
-// PDF to Excel
 app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     const inputPath = req.file.path;
@@ -245,18 +197,12 @@ app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Extracted Text');
         data.text.split('\n').forEach(line => worksheet.addRow([line]));
-        
-        // Write to a buffer in memory
         const buffer = await workbook.xlsx.writeBuffer();
-        
         res.setHeader('Content-Disposition', 'attachment; filename=converted.xlsx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
-    } catch (err) {
-        handleError(res, err, 'Failed to convert PDF to Excel.');
-    } finally {
-        cleanupFiles(inputPath);
-    }
+    } catch (err) { handleError(res, err, 'Failed to convert PDF to Excel.'); }
+    finally { cleanupFiles(inputPath); }
 });
 
 app.listen(port, () => {

@@ -8,15 +8,18 @@ WORKDIR /usr/src/app
 # Temporarily switch to the root user to install system dependencies
 USER root
 
-# Update package lists and install LibreOffice and Poppler, then clean up.
-# --no-install-recommends keeps the image size smaller.
+# Brute-force install of ALL recommended LibreOffice dependencies and extra fonts.
+# THIS WILL MAKE THE BUILD MUCH LONGER, BUT IT IS NECESSARY.
 RUN apt-get update && \
-    apt-get install -y libreoffice poppler-utils fonts-liberation --no-install-recommends && \
+    apt-get install -y \
+    libreoffice \
+    poppler-utils \
+    fonts-liberation \
+    fonts-dejavu-core && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package.json and package-lock.json (if it exists)
-# This is a Docker optimization to cache the npm install layer
 COPY package*.json ./
 
 # Install app dependencies
