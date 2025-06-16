@@ -1,3 +1,9 @@
+// =================================================================
+// === THIS IS THE NEW DEBUG VERSION - IF YOU SEE THIS, IT WORKED ===
+// =================================================================
+
+console.log('--- SERVER.JS V3 --- SCRIPT IS STARTING ---');
+
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs').promises;
@@ -10,16 +16,17 @@ const ExcelJS = require('exceljs');
 const pdf = require('pdf-parse');
 
 // --- AGGRESSIVE DEBUGGING FIX for pdf-poppler ---
-console.log('--- SERVER.JS SCRIPT STARTING (VERSION WITH DEBUG LOGS) ---');
-console.log(`--- Current platform detected: ${process.platform} ---`);
+console.log(`--- V3 --- Current platform detected: ${process.platform}`);
 
 if (process.platform === 'linux') {
-    console.log('--- PLATFORM IS LINUX: Attempting to set poppler path. ---');
+    console.log('--- V3 --- PLATFORM IS LINUX: Setting poppler path to /usr/bin');
     poppler.path = '/usr/bin';
-    console.log('--- Poppler path has been set to /usr/bin. ---');
+    console.log('--- V3 --- Poppler path has been set.');
 } else {
-    console.log(`--- PLATFORM IS ${process.platform}: Skipping poppler path configuration. ---`);
+    console.log(`--- V3 --- PLATFORM IS ${process.platform}: NOT setting poppler path.`);
 }
+
+console.log('--- V3 --- Code is now creating the express app...');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -28,6 +35,9 @@ const port = process.env.PORT || 3000;
 app.use(express.static('public'));
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdir(uploadDir, { recursive: true });
+
+// ... the rest of your code is the same ...
+// ... it's okay to just copy this and paste it over your entire file ...
 
 // Multer setup for file uploads
 const storage = multer.diskStorage({
@@ -49,8 +59,7 @@ const cleanupFiles = async (...files) => {
   }
 };
 
-// ... THE REST OF YOUR CODE (endpoints) REMAINS THE SAME ...
-// 1. Merge PDF
+// --- API ENDPOINTS FOR EACH TOOL ---
 app.post('/api/merge', upload.array('files'), async (req, res) => {
   let paths = req.files.map(f => f.path);
   let mergedPdfPath = path.join(uploadDir, `merged-${Date.now()}.pdf`);
@@ -72,7 +81,6 @@ app.post('/api/merge', upload.array('files'), async (req, res) => {
   }
 });
 
-// 2. Split PDF
 app.post('/api/split', upload.single('file'), async (req, res) => {
     let inputPath = req.file.path;
     try {
@@ -87,15 +95,12 @@ app.post('/api/split', upload.single('file'), async (req, res) => {
     }
 });
 
-
-// 3. Compress PDF - Placeholder
 app.post('/api/compress', upload.single('file'), async (req, res) => {
     let inputPath = req.file.path;
     console.log("Compression is a complex operation. Returning original file as a placeholder.");
     res.download(inputPath, `compressed-${req.file.originalname}`, () => cleanupFiles(inputPath));
 });
 
-// 4. Convert PDF to Word
 const convertFile = async (req, res, outputExt, libreOutputExt) => {
   let inputPath = req.file.path;
   let outputPath = path.join(uploadDir, `${path.parse(req.file.filename).name}.${outputExt}`);
@@ -116,13 +121,8 @@ const convertFile = async (req, res, outputExt, libreOutputExt) => {
 };
 
 app.post('/api/pdftoword', upload.single('file'), (req, res) => convertFile(req, res, 'docx', 'docx'));
-
-// 5. Convert Word/Excel to PDF
 app.post('/api/wordtopdf', upload.single('file'), (req, res) => convertFile(req, res, 'pdf'));
 app.post('/api/exceltopdf', upload.single('file'), (req, res) => convertFile(req, res, 'pdf'));
-
-
-// 6. JPG to PDF
 app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
     let paths = req.files.map(f => f.path);
     let outputPath = path.join(uploadDir, `converted-${Date.now()}.pdf`);
@@ -145,7 +145,6 @@ app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
     }
 });
 
-// 7. PDF to JPG
 app.post('/api/pdftojpg', upload.single('file'), async (req, res) => {
     let inputPath = req.file.path;
     let opts = {
@@ -167,8 +166,6 @@ app.post('/api/pdftojpg', upload.single('file'), async (req, res) => {
     }
 });
 
-
-// 8. Rotate PDF
 app.post('/api/rotate', upload.single('file'), async (req, res) => {
     let inputPath = req.file.path;
     let outputPath = path.join(uploadDir, `rotated-${Date.now()}.pdf`);
@@ -183,15 +180,13 @@ app.post('/api/rotate', upload.single('file'), async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).send('Error rotating PDF.');
-        cleanupFiles(inputPath, outputPath);
+        cleanupFiles(inputPath);
     }
 });
 
-// 9 & 10. Protect / Unlock PDF
 app.post('/api/protect', upload.single('file'), async (req, res) => {
     const { password } = req.body;
     if (!password) return res.status(400).send('Password is required.');
-
     let inputPath = req.file.path;
     let outputPath = path.join(uploadDir, `protected-${Date.now()}.pdf`);
     try {
@@ -201,7 +196,6 @@ app.post('/api/protect', upload.single('file'), async (req, res) => {
             userPassword: password,
             ownerPassword: password,
         }).then(bytes => fs.writeFile(outputPath, bytes));
-
         res.download(outputPath, `protected-${req.file.originalname}`, () => cleanupFiles(inputPath, outputPath));
     } catch (err) {
         console.error(err);
@@ -213,7 +207,6 @@ app.post('/api/protect', upload.single('file'), async (req, res) => {
 app.post('/api/unlock', upload.single('file'), async (req, res) => {
     const { password } = req.body;
     if (!password) return res.status(400).send('Password is required.');
-
     let inputPath = req.file.path;
     let outputPath = path.join(uploadDir, `unlocked-${Date.now()}.pdf`);
     try {
@@ -221,7 +214,6 @@ app.post('/api/unlock', upload.single('file'), async (req, res) => {
         const pdfDoc = await PDFDocument.load(pdfBytes, { password });
         const unlockedBytes = await pdfDoc.save();
         await fs.writeFile(outputPath, unlockedBytes);
-
         res.download(outputPath, `unlocked-${req.file.originalname}`, () => cleanupFiles(inputPath, outputPath));
     } catch (err) {
         console.error(err);
@@ -234,32 +226,26 @@ app.post('/api/unlock', upload.single('file'), async (req, res) => {
     }
 });
 
-// 11. PDF to Excel
 app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
     let inputPath = req.file.path;
     let outputPath = path.join(uploadDir, `converted-${Date.now()}.xlsx`);
     try {
         const dataBuffer = await fs.readFile(inputPath);
         const data = await pdf(dataBuffer);
-
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Extracted Text');
-        
         const lines = data.text.split('\n');
         lines.forEach(line => {
             worksheet.addRow([line]);
         });
-
         await workbook.xlsx.writeFile(outputPath);
         res.download(outputPath, 'converted.xlsx', () => cleanupFiles(inputPath, outputPath));
-
     } catch (err) {
         console.error(err);
         res.status(500).send('Error converting PDF to Excel.');
         cleanupFiles(inputPath, outputPath);
     }
 });
-
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
