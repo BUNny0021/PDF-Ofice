@@ -9,12 +9,19 @@ const Jimp = require('jimp');
 const ExcelJS = require('exceljs');
 const pdf = require('pdf-parse');
 
-// --- FIX: Configure pdf-poppler for Linux Environment ---
-// The 'pdf-poppler' library needs an explicit path to the poppler binaries on Linux.
-// We installed these tools to '/usr/bin' in our Dockerfile.
+// --- AGGRESSIVE DEBUGGING FIX for pdf-poppler ---
+// We will log to the console to prove this code is being executed and to see what's happening.
+console.log('Server script is starting up...');
+console.log(`Current platform detected: ${process.platform}`);
+
 if (process.platform === 'linux') {
+    console.log('PLATFORM IS LINUX: Attempting to set poppler path.');
     poppler.path = '/usr/bin';
+    console.log('Poppler path has been set to /usr/bin. The application will now continue to load.');
+} else {
+    console.log(`PLATFORM IS ${process.platform}: Skipping poppler path configuration.`);
 }
+
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -70,14 +77,10 @@ app.post('/api/merge', upload.array('files'), async (req, res) => {
 
 // 2. Split PDF
 app.post('/api/split', upload.single('file'), async (req, res) => {
-    // Note: A full split UI is complex (selecting ranges). This is a simple split-all-pages example.
-    // For a real app, you'd send page ranges from the client.
     let inputPath = req.file.path;
     try {
         const originalPdfBytes = await fs.readFile(inputPath);
         const originalPdf = await PDFDocument.load(originalPdfBytes);
-        // This is a placeholder. A real app would generate a zip of single pages.
-        // For simplicity, we'll just send the original back.
         console.log(`PDF has ${originalPdf.getPageCount()} pages. A full split feature would create a zip here.`);
         res.download(inputPath, 'split-result.pdf', () => cleanupFiles(inputPath));
     } catch (err) {
@@ -88,16 +91,14 @@ app.post('/api/split', upload.single('file'), async (req, res) => {
 });
 
 
-// 3. Compress PDF - Placeholder, as true compression is complex and often requires Ghostscript
+// 3. Compress PDF - Placeholder
 app.post('/api/compress', upload.single('file'), async (req, res) => {
-    // True PDF compression is very hard without external tools like Ghostscript.
-    // This is a placeholder. It will just return the original PDF.
     let inputPath = req.file.path;
     console.log("Compression is a complex operation. Returning original file as a placeholder.");
     res.download(inputPath, `compressed-${req.file.originalname}`, () => cleanupFiles(inputPath));
 });
 
-// 4. Convert PDF to Word/JPG/Excel (using libreoffice and poppler)
+// 4. Convert PDF to Word
 const convertFile = async (req, res, outputExt, libreOutputExt) => {
   let inputPath = req.file.path;
   let outputPath = path.join(uploadDir, `${path.parse(req.file.filename).name}.${outputExt}`);
@@ -132,7 +133,7 @@ app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
         const pdfDoc = await PDFDocument.create();
         for (const imgPath of paths) {
             const img = await Jimp.read(imgPath);
-            const imgBytes = await img.getBufferAsync(Jimp.MIME_PNG); // Convert to a standard format
+            const imgBytes = await img.getBufferAsync(Jimp.MIME_PNG);
             const pdfImage = await pdfDoc.embedPng(imgBytes);
             const page = pdfDoc.addPage([pdfImage.width, pdfImage.height]);
             page.drawImage(pdfImage, { x: 0, y: 0, width: pdfImage.width, height: pdfImage.height });
@@ -154,15 +155,12 @@ app.post('/api/pdftojpg', upload.single('file'), async (req, res) => {
         format: 'jpeg',
         out_dir: uploadDir,
         out_prefix: path.parse(inputPath).name,
-        page: null // convert all pages
+        page: null
     };
     try {
-        // Poppler creates files named like: prefix-1.jpg, prefix-2.jpg
         await poppler(inputPath, opts);
-        // For simplicity, we'll send back the first page. A real app would zip all pages.
         const firstPagePath = `${opts.out_dir}/${opts.out_prefix}-1.jpg`;
         res.download(firstPagePath, `${path.parse(req.file.originalname).name}.jpg`, () => {
-             // Basic cleanup. A more robust solution would list all generated files and delete them.
              cleanupFiles(inputPath, firstPagePath);
         });
     } catch (err) {
@@ -181,8 +179,6 @@ app.post('/api/rotate', upload.single('file'), async (req, res) => {
         const pdfBytes = await fs.readFile(inputPath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const pages = pdfDoc.getPages();
-        // Rotating every page by 90 degrees clockwise.
-        // A real app would get the angle from the request body.
         pages.forEach(page => page.setRotation(page.getRotation().angle + 90));
         const rotatedPdfBytes = await pdfDoc.save();
         await fs.writeFile(outputPath, rotatedPdfBytes);
@@ -206,7 +202,7 @@ app.post('/api/protect', upload.single('file'), async (req, res) => {
         const pdfDoc = await PDFDocument.load(pdfBytes);
         await pdfDoc.save({
             userPassword: password,
-            ownerPassword: password, // You can set a different owner password
+            ownerPassword: password,
         }).then(bytes => fs.writeFile(outputPath, bytes));
 
         res.download(outputPath, `protected-${req.file.originalname}`, () => cleanupFiles(inputPath, outputPath));
@@ -225,14 +221,13 @@ app.post('/api/unlock', upload.single('file'), async (req, res) => {
     let outputPath = path.join(uploadDir, `unlocked-${Date.now()}.pdf`);
     try {
         const pdfBytes = await fs.readFile(inputPath);
-        const pdfDoc = await PDFDocument.load(pdfBytes, { password }); // Try to load with password
+        const pdfDoc = await PDFDocument.load(pdfBytes, { password });
         const unlockedBytes = await pdfDoc.save();
         await fs.writeFile(outputPath, unlockedBytes);
 
         res.download(outputPath, `unlocked-${req.file.originalname}`, () => cleanupFiles(inputPath, outputPath));
     } catch (err) {
         console.error(err);
-        // pdf-lib throws a specific error for wrong passwords
         if (err.message.includes('Invalid password')) {
             res.status(400).send('Incorrect password.');
         } else {
@@ -242,7 +237,7 @@ app.post('/api/unlock', upload.single('file'), async (req, res) => {
     }
 });
 
-// 11. PDF to Excel (Basic text extraction)
+// 11. PDF to Excel
 app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
     let inputPath = req.file.path;
     let outputPath = path.join(uploadDir, `converted-${Date.now()}.xlsx`);
@@ -253,7 +248,6 @@ app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Extracted Text');
         
-        // Split text by lines and add to worksheet rows
         const lines = data.text.split('\n');
         lines.forEach(line => {
             worksheet.addRow([line]);
@@ -271,5 +265,5 @@ app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
 
 
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`Server running on port ${port}`);
 });
