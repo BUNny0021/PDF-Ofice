@@ -1,8 +1,6 @@
 // =================================================================
-// === THIS IS THE NEW DEBUG VERSION - IF YOU SEE THIS, IT WORKED ===
+// === THIS IS THE FINAL VERSION WITH THE CORRECT ORDER OF OPERATIONS ===
 // =================================================================
-
-console.log('--- SERVER.JS V3 --- SCRIPT IS STARTING ---');
 
 const express = require('express');
 const multer = require('multer');
@@ -10,23 +8,16 @@ const fs = require('fs').promises;
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
 const libre = require('libreoffice-convert');
-const { poppler } = require('pdf-poppler');
+const { poppler } = require('pdf-poppler'); // 1. Require the library
 const Jimp = require('jimp');
 const ExcelJS = require('exceljs');
 const pdf = require('pdf-parse');
 
-// --- AGGRESSIVE DEBUGGING FIX for pdf-poppler ---
-console.log(`--- V3 --- Current platform detected: ${process.platform}`);
+// 2. IMMEDIATELY configure the poppler path BEFORE it is used.
+// This is the fix. The check happens instantly on require, so we must set the path right after.
+poppler.path = '/usr/bin';
 
-if (process.platform === 'linux') {
-    console.log('--- V3 --- PLATFORM IS LINUX: Setting poppler path to /usr/bin');
-    poppler.path = '/usr/bin';
-    console.log('--- V3 --- Poppler path has been set.');
-} else {
-    console.log(`--- V3 --- PLATFORM IS ${process.platform}: NOT setting poppler path.`);
-}
-
-console.log('--- V3 --- Code is now creating the express app...');
+console.log('--- FINAL FIX ATTEMPT: Poppler path set to /usr/bin ---');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -36,8 +27,7 @@ app.use(express.static('public'));
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdir(uploadDir, { recursive: true });
 
-// ... the rest of your code is the same ...
-// ... it's okay to just copy this and paste it over your entire file ...
+// ... aaaaand the rest of the file is exactly the same as before ...
 
 // Multer setup for file uploads
 const storage = multer.diskStorage({
