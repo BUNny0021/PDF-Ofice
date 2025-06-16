@@ -1,23 +1,13 @@
-// =================================================================
-// === THIS IS THE FINAL VERSION WITH THE CORRECT ORDER OF OPERATIONS ===
-// =================================================================
-
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
+const { exec } = require('child_process'); // Use Node's built-in exec function
 const { PDFDocument } = require('pdf-lib');
 const libre = require('libreoffice-convert');
-const { poppler } = require('pdf-poppler'); // 1. Require the library
 const Jimp = require('jimp');
 const ExcelJS = require('exceljs');
 const pdf = require('pdf-parse');
-
-// 2. IMMEDIATELY configure the poppler path BEFORE it is used.
-// This is the fix. The check happens instantly on require, so we must set the path right after.
-poppler.path = '/usr/bin';
-
-console.log('--- FINAL FIX ATTEMPT: Poppler path set to /usr/bin ---');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -27,16 +17,14 @@ app.use(express.static('public'));
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdir(uploadDir, { recursive: true });
 
-// ... aaaaand the rest of the file is exactly the same as before ...
-
-// Multer setup for file uploads
+// Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
 const upload = multer({ storage: storage });
 
-// --- HELPER FUNCTION TO CLEAN UP FILES ---
+// Helper function for cleanup
 const cleanupFiles = async (...files) => {
   for (const file of files) {
     if (file) {
@@ -49,26 +37,59 @@ const cleanupFiles = async (...files) => {
   }
 };
 
-// --- API ENDPOINTS FOR EACH TOOL ---
+// --- API ENDPOINTS ---
+
+// PDF to JPG - NEW AND CORRECTED METHOD
+app.post('/api/pdftojpg', upload.single('file'), (req, res) => {
+    const inputPath = req.file.path;
+    const outputPrefix = path.join(uploadDir, path.parse(inputPath).name);
+    // The pdftocairo command is part of poppler-utils and is very reliable.
+    // -jpeg flag outputs JPG files.
+    // It creates files like: <outputPrefix>-1.jpg, <outputPrefix>-2.jpg etc.
+    const command = `pdftocairo -jpeg "${inputPath}" "${outputPrefix}"`;
+
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`exec error: ${error}`);
+            cleanupFiles(inputPath);
+            return res.status(500).send(`Error converting PDF to JPG. stderr: ${stderr}`);
+        }
+
+        // For simplicity, send back the first page. A real app would zip all pages.
+        const firstPagePath = `${outputPrefix}-1.jpg`;
+
+        res.download(firstPagePath, `${path.parse(req.file.originalname).name}.jpg`, (err) => {
+            if (err) {
+                console.error('Download error:', err);
+            }
+            // Clean up the original PDF and the generated JPG.
+            cleanupFiles(inputPath, firstPagePath);
+        });
+    });
+});
+
+
+// --- Other Endpoints (Unchanged) ---
+
 app.post('/api/merge', upload.array('files'), async (req, res) => {
-  let paths = req.files.map(f => f.path);
-  let mergedPdfPath = path.join(uploadDir, `merged-${Date.now()}.pdf`);
-  try {
-    const mergedPdf = await PDFDocument.create();
-    for (const pdfPath of paths) {
-      const pdfBytes = await fs.readFile(pdfPath);
-      const pdfDoc = await PDFDocument.load(pdfBytes);
-      const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
-      copiedPages.forEach(page => mergedPdf.addPage(page));
+    let paths = req.files.map(f => f.path);
+    let mergedPdfPath = path.join(uploadDir, `merged-${Date.now()}.pdf`);
+    try {
+        const mergedPdf = await PDFDocument.create();
+        for (const pdfPath of paths) {
+            const pdfBytes = await fs.readFile(pdfPath);
+            const pdfDoc = await PDFDocument.load(pdfBytes);
+            const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+            copiedPages.forEach(page => mergedPdf.addPage(page));
+        }
+        const mergedPdfBytes = await mergedPdf.save();
+        await fs.writeFile(mergedPdfPath, mergedPdfBytes);
+        res.download(mergedPdfPath, 'merged.pdf', () => cleanupFiles(mergedPdfPath, ...paths));
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error merging PDFs.');
+        cleanupFiles(mergedPdfPath, ...paths);
     }
-    const mergedPdfBytes = await mergedPdf.save();
-    await fs.writeFile(mergedPdfPath, mergedPdfBytes);
-    res.download(mergedPdfPath, 'merged.pdf', () => cleanupFiles(mergedPdfPath, ...paths));
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Error merging PDFs.');
-    cleanupFiles(mergedPdfPath, ...paths);
-  }
 });
 
 app.post('/api/split', upload.single('file'), async (req, res) => {
@@ -92,27 +113,26 @@ app.post('/api/compress', upload.single('file'), async (req, res) => {
 });
 
 const convertFile = async (req, res, outputExt, libreOutputExt) => {
-  let inputPath = req.file.path;
-  let outputPath = path.join(uploadDir, `${path.parse(req.file.filename).name}.${outputExt}`);
-  try {
-    const fileBuffer = await fs.readFile(inputPath);
-    libre.convert(fileBuffer, `.${libreOutputExt || outputExt}`, undefined, async (err, done) => {
-      if (err) {
-        throw new Error(`Error during conversion: ${err}`);
-      }
-      await fs.writeFile(outputPath, done);
-      res.download(outputPath, `${path.parse(req.file.originalname).name}.${outputExt}`, () => cleanupFiles(inputPath, outputPath));
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send(`Error converting file to ${outputExt}.`);
-    cleanupFiles(inputPath, outputPath);
-  }
+    let inputPath = req.file.path;
+    let outputPath = path.join(uploadDir, `${path.parse(req.file.filename).name}.${outputExt}`);
+    try {
+        const fileBuffer = await fs.readFile(inputPath);
+        libre.convert(fileBuffer, `.${libreOutputExt || outputExt}`, undefined, async (err, done) => {
+            if (err) { throw new Error(`Error during conversion: ${err}`); }
+            await fs.writeFile(outputPath, done);
+            res.download(outputPath, `${path.parse(req.file.originalname).name}.${outputExt}`, () => cleanupFiles(inputPath, outputPath));
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send(`Error converting file to ${outputExt}.`);
+        cleanupFiles(inputPath, outputPath);
+    }
 };
 
 app.post('/api/pdftoword', upload.single('file'), (req, res) => convertFile(req, res, 'docx', 'docx'));
 app.post('/api/wordtopdf', upload.single('file'), (req, res) => convertFile(req, res, 'pdf'));
 app.post('/api/exceltopdf', upload.single('file'), (req, res) => convertFile(req, res, 'pdf'));
+
 app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
     let paths = req.files.map(f => f.path);
     let outputPath = path.join(uploadDir, `converted-${Date.now()}.pdf`);
@@ -132,27 +152,6 @@ app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
         console.error(err);
         res.status(500).send('Error converting JPG to PDF.');
         cleanupFiles(outputPath, ...paths);
-    }
-});
-
-app.post('/api/pdftojpg', upload.single('file'), async (req, res) => {
-    let inputPath = req.file.path;
-    let opts = {
-        format: 'jpeg',
-        out_dir: uploadDir,
-        out_prefix: path.parse(inputPath).name,
-        page: null
-    };
-    try {
-        await poppler(inputPath, opts);
-        const firstPagePath = `${opts.out_dir}/${opts.out_prefix}-1.jpg`;
-        res.download(firstPagePath, `${path.parse(req.file.originalname).name}.jpg`, () => {
-             cleanupFiles(inputPath, firstPagePath);
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Error converting PDF to JPG.');
-        cleanupFiles(inputPath);
     }
 });
 
@@ -182,10 +181,7 @@ app.post('/api/protect', upload.single('file'), async (req, res) => {
     try {
         const pdfBytes = await fs.readFile(inputPath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
-        await pdfDoc.save({
-            userPassword: password,
-            ownerPassword: password,
-        }).then(bytes => fs.writeFile(outputPath, bytes));
+        await pdfDoc.save({ userPassword: password, ownerPassword: password, }).then(bytes => fs.writeFile(outputPath, bytes));
         res.download(outputPath, `protected-${req.file.originalname}`, () => cleanupFiles(inputPath, outputPath));
     } catch (err) {
         console.error(err);
@@ -225,9 +221,7 @@ app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Extracted Text');
         const lines = data.text.split('\n');
-        lines.forEach(line => {
-            worksheet.addRow([line]);
-        });
+        lines.forEach(line => { worksheet.addRow([line]); });
         await workbook.xlsx.writeFile(outputPath);
         res.download(outputPath, 'converted.xlsx', () => cleanupFiles(inputPath, outputPath));
     } catch (err) {
@@ -238,5 +232,5 @@ app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+    console.log(`Server is live and running on port ${port}`);
 });
