@@ -1,4 +1,4 @@
-// server.js - FINAL VERSION WITH LIBREOFFICE FIX
+// server.js - FINAL VERSION WITH MEMORY BUFFER FIX FOR LIBREOFFICE
 
 const express = require('express');
 const multer = require('multer');
@@ -12,6 +12,7 @@ const Jimp = require('jimp');
 const ExcelJS = require('exceljs');
 const pdf = require('pdf-parse');
 
+// Make libreoffice-convert's callback-based function into a modern async/await function
 const convertAsync = promisify(libre.convert);
 
 const app = express();
@@ -32,7 +33,7 @@ const cleanupFiles = async (...files) => {
     if (file && typeof file === 'string') {
       try {
         await fs.unlink(file);
-      } catch (err) { /* We don't need to crash if a cleanup fails */ }
+      } catch (err) { /* Don't crash if cleanup fails */ }
     }
   }
 };
@@ -49,59 +50,52 @@ const handleError = (res, err, friendlyMessage, ...filesToClean) => {
 
 // --- API ENDPOINTS WITH THE FIX ---
 
-// PDF to Word
-app.post('/api/pdftoword', upload.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-    const { path: inputPath, originalname } = req.file;
-    const outputPath = path.join(uploadDir, `${path.parse(originalname).name}.docx`);
+// Helper function for all LibreOffice conversions
+const performConversion = async (res, file, outputExtension) => {
+    if (!file) return res.status(400).json({ message: 'No file uploaded.' });
+    const { path: inputPath, originalname } = file;
+    const outputFilename = `${path.parse(originalname).name}.${outputExtension}`;
+
     try {
         const fileBuffer = await fs.readFile(inputPath);
-        // FIX: Pass 'docx' instead of '.docx'
-        const docxBuffer = await convertAsync(fileBuffer, 'docx', undefined);
-        await fs.writeFile(outputPath, docxBuffer);
-        res.download(outputPath, `${path.parse(originalname).name}.docx`, () => cleanupFiles(inputPath, outputPath));
+        
+        // Let the library return the converted file as a memory buffer
+        const outputBuffer = await convertAsync(fileBuffer, outputExtension, undefined);
+        
+        // Send the buffer directly to the user for download
+        res.setHeader('Content-Disposition', `attachment; filename=${outputFilename}`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.send(outputBuffer);
+
     } catch (err) {
-        handleError(res, err, 'Failed to convert PDF to Word.', inputPath, outputPath);
+        handleError(res, err, `Failed to convert file to ${outputExtension}.`);
+    } finally {
+        // Always clean up the original uploaded file
+        cleanupFiles(inputPath);
     }
+};
+
+// PDF to Word
+app.post('/api/pdftoword', upload.single('file'), (req, res) => {
+    performConversion(res, req.file, 'docx');
 });
 
 // Word to PDF
-app.post('/api/wordtopdf', upload.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-    const { path: inputPath, originalname } = req.file;
-    const outputPath = path.join(uploadDir, `${path.parse(originalname).name}.pdf`);
-    try {
-        const fileBuffer = await fs.readFile(inputPath);
-        // FIX: Pass 'pdf' instead of '.pdf'
-        const pdfBuffer = await convertAsync(fileBuffer, 'pdf', undefined);
-        await fs.writeFile(outputPath, pdfBuffer);
-        res.download(outputPath, `${path.parse(originalname).name}.pdf`, () => cleanupFiles(inputPath, outputPath));
-    } catch (err) {
-        handleError(res, err, 'Failed to convert Word to PDF.', inputPath, outputPath);
-    }
+app.post('/api/wordtopdf', upload.single('file'), (req, res) => {
+    performConversion(res, req.file, 'pdf');
 });
 
 // Excel to PDF
-app.post('/api/exceltopdf', upload.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-    const { path: inputPath, originalname } = req.file;
-    const outputPath = path.join(uploadDir, `${path.parse(originalname).name}.pdf`);
-    try {
-        const fileBuffer = await fs.readFile(inputPath);
-        // FIX: Pass 'pdf' instead of '.pdf'
-        const pdfBuffer = await convertAsync(fileBuffer, 'pdf', undefined);
-        await fs.writeFile(outputPath, pdfBuffer);
-        res.download(outputPath, `${path.parse(originalname).name}.pdf`, () => cleanupFiles(inputPath, outputPath));
-    } catch (err) {
-        handleError(res, err, 'Failed to convert Excel to PDF.', inputPath, outputPath);
-    }
+app.post('/api/exceltopdf', upload.single('file'), (req, res) => {
+    performConversion(res, req.file, 'pdf');
 });
+
+// --- Other Endpoints ---
 
 // Merge PDF
 app.post('/api/merge', upload.array('files'), async (req, res) => {
   if (!req.files || req.files.length === 0) return res.status(400).json({ message: 'No files uploaded.' });
   const paths = req.files.map(f => f.path);
-  let mergedPdfPath = path.join(uploadDir, `merged-${Date.now()}.pdf`);
   try {
     const mergedPdf = await PDFDocument.create();
     for (const pdfPath of paths) {
@@ -110,11 +104,14 @@ app.post('/api/merge', upload.array('files'), async (req, res) => {
       const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
       copiedPages.forEach(page => mergedPdf.addPage(page));
     }
-    const mergedPdfBytes = await mergedPdf.save();
-    await fs.writeFile(mergedPdfPath, mergedPdfBytes);
-    res.download(mergedPdfPath, 'merged.pdf', () => cleanupFiles(mergedPdfPath, ...paths));
+    const mergedPdfBytes = await pdfDoc.save();
+    res.setHeader('Content-Disposition', 'attachment; filename=merged.pdf');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(Buffer.from(mergedPdfBytes));
   } catch (err) {
-    handleError(res, err, 'Failed to merge PDFs.', mergedPdfPath, ...paths);
+    handleError(res, err, 'Failed to merge PDFs.');
+  } finally {
+      cleanupFiles(...paths);
   }
 });
 
@@ -143,7 +140,6 @@ app.post('/api/compress', upload.single('file'), (req, res) => {
 app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).json({ message: 'No files uploaded.' });
     const paths = req.files.map(f => f.path);
-    const outputPath = path.join(uploadDir, `converted-${Date.now()}.pdf`);
     try {
         const pdfDoc = await PDFDocument.create();
         for (const imgPath of paths) {
@@ -154,10 +150,13 @@ app.post('/api/jpgtopdf', upload.array('files'), async (req, res) => {
             page.drawImage(pdfImage, { x: 0, y: 0, width: pdfImage.width, height: pdfImage.height });
         }
         const pdfBytes = await pdfDoc.save();
-        await fs.writeFile(outputPath, pdfBytes);
-        res.download(outputPath, 'converted.pdf', () => cleanupFiles(outputPath, ...paths));
+        res.setHeader('Content-Disposition', 'attachment; filename=converted.pdf');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.send(Buffer.from(pdfBytes));
     } catch (err) {
-        handleError(res, err, 'Failed to convert JPG to PDF.', outputPath, ...paths);
+        handleError(res, err, 'Failed to convert JPG to PDF.');
+    } finally {
+        cleanupFiles(...paths);
     }
 });
 
@@ -181,16 +180,18 @@ app.post('/api/pdftojpg', upload.single('file'), (req, res) => {
 app.post('/api/rotate', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     const inputPath = req.file.path;
-    const outputPath = path.join(uploadDir, `rotated-${Date.now()}.pdf`);
     try {
         const pdfBytes = await fs.readFile(inputPath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
         pdfDoc.getPages().forEach(page => page.setRotation(page.getRotation().angle + 90));
         const rotatedPdfBytes = await pdfDoc.save();
-        await fs.writeFile(outputPath, rotatedPdfBytes);
-        res.download(outputPath, 'rotated.pdf', () => cleanupFiles(inputPath, outputPath));
+        res.setHeader('Content-Disposition', 'attachment; filename=rotated.pdf');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.send(Buffer.from(rotatedPdfBytes));
     } catch (err) {
-        handleError(res, err, 'Failed to rotate PDF.', inputPath, outputPath);
+        handleError(res, err, 'Failed to rotate PDF.');
+    } finally {
+        cleanupFiles(inputPath);
     }
 });
 
@@ -200,15 +201,17 @@ app.post('/api/unlock', upload.single('file'), async (req, res) => {
     const { password } = req.body;
     if (!password) return res.status(400).json({ message: 'Password is required for unlocking.' });
     const inputPath = req.file.path;
-    const outputPath = path.join(uploadDir, `unlocked-${Date.now()}.pdf`);
     try {
         const pdfBytes = await fs.readFile(inputPath);
         const pdfDoc = await PDFDocument.load(pdfBytes, { password });
         const unlockedBytes = await pdfDoc.save();
-        await fs.writeFile(outputPath, unlockedBytes);
-        res.download(outputPath, `unlocked-${req.file.originalname}`, () => cleanupFiles(inputPath, outputPath));
+        res.setHeader('Content-Disposition', `attachment; filename=unlocked-${req.file.originalname}`);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.send(Buffer.from(unlockedBytes));
     } catch (err) {
-        handleError(res, err, 'Failed to unlock PDF. Check password.', inputPath, outputPath);
+        handleError(res, err, 'Failed to unlock PDF. Check password.');
+    } finally {
+        cleanupFiles(inputPath);
     }
 });
 
@@ -218,15 +221,17 @@ app.post('/api/protect', upload.single('file'), async (req, res) => {
     const { password } = req.body;
     if (!password) return res.status(400).json({ message: 'Password is required for protecting.' });
     const inputPath = req.file.path;
-    const outputPath = path.join(uploadDir, `protected-${Date.now()}.pdf`);
     try {
         const pdfBytes = await fs.readFile(inputPath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const protectedBytes = await pdfDoc.save({ userPassword: password, ownerPassword: password });
-        await fs.writeFile(outputPath, protectedBytes);
-        res.download(outputPath, `protected-${req.file.originalname}`, () => cleanupFiles(inputPath, outputPath));
+        res.setHeader('Content-Disposition', `attachment; filename=protected-${req.file.originalname}`);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.send(Buffer.from(protectedBytes));
     } catch (err) {
-        handleError(res, err, 'Failed to protect PDF.', inputPath, outputPath);
+        handleError(res, err, 'Failed to protect PDF.');
+    } finally {
+        cleanupFiles(inputPath);
     }
 });
 
@@ -234,17 +239,23 @@ app.post('/api/protect', upload.single('file'), async (req, res) => {
 app.post('/api/pdftoexcel', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
     const inputPath = req.file.path;
-    const outputPath = path.join(uploadDir, `converted-${Date.now()}.xlsx`);
     try {
         const dataBuffer = await fs.readFile(inputPath);
         const data = await pdf(dataBuffer);
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Extracted Text');
         data.text.split('\n').forEach(line => worksheet.addRow([line]));
-        await workbook.xlsx.writeFile(outputPath);
-        res.download(outputPath, 'converted.xlsx', () => cleanupFiles(inputPath, outputPath));
+        
+        // Write to a buffer in memory
+        const buffer = await workbook.xlsx.writeBuffer();
+        
+        res.setHeader('Content-Disposition', 'attachment; filename=converted.xlsx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
     } catch (err) {
-        handleError(res, err, 'Failed to convert PDF to Excel.', inputPath, outputPath);
+        handleError(res, err, 'Failed to convert PDF to Excel.');
+    } finally {
+        cleanupFiles(inputPath);
     }
 });
 
