@@ -1,4 +1,14 @@
-document.addEventListener('DOMContentLoaded', () => {
+
+body.homepage-bg {
+    background-image:
+       
+        linear-gradient(rgba(249, 250, 251, 0.9), rgba(249, 250, 251, 0.95)),
+        
+        url('/samurai_bg.jpg');
+
+    background-size: cover;
+    background-position: center center;
+    background-attachment: fixed; }document.addEventListener('DOMContentLoaded', () => {
     const tools = [
         { id: 'merge', name: 'Merge PDF', desc: 'Combine multiple PDFs into one.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m2 5.5V17a2 2 0 00-2-2h-2m-2-4H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-3.5m-2-5l2.5-2.5" />', endpoint: '/api/merge', multiple: true },
         { id: 'split', name: 'Split PDF', desc: 'Extract one or more pages from a PDF.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M14.121 14.121L19 19m-4.879-4.879L19.707 9.5M14.121 14.121L9.5 19.707M4 14.828v-5.656a2 2 0 01.586-1.414l2.828-2.828a2 2 0 011.414-.586h5.656a2 2 0 011.414.586l2.828 2.828a2 2 0 01.586 1.414v5.656a2 2 0 01-.586 1.414l-2.828 2.828a2 2 0 01-1.414.586h-5.656a2 2 0 01-1.414-.586L4.586 16.242A2 2 0 014 14.828z" />', endpoint: '/api/split', multiple: false },

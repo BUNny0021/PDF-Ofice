@@ -1,3 +1,5 @@
+document.body.classList.remove('homepage-bg');
+document.body.classList.add('homepage-bg');
 document.addEventListener('DOMContentLoaded', () => {
     const tools = [
         { id: 'merge', name: 'Merge PDF', desc: 'Combine multiple PDFs into one.', icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m2 5.5V17a2 2 0 00-2-2h-2m-2-4H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-3.5m-2-5l2.5-2.5" />', endpoint: '/api/merge', multiple: true },
@@ -76,7 +78,10 @@ document.addEventListener('DOMContentLoaded', () => {
             passwordSection.classList.remove('hidden');
         }
 
-        selectFileBtn.addEventListener('click', () => fileInput.click());
+        selectFileBtn.addEventListener('click', (e) => {
+    e.stopPropagation(); // This is the fix! Prevents the click from reaching the parent box.
+    fileInput.click();
+});
         uploadBox.addEventListener('click', () => fileInput.click());
 
         // Drag and drop listeners
@@ -129,44 +134,48 @@ document.addEventListener('DOMContentLoaded', () => {
             passwordSection.classList.add('hidden');
             processingSection.classList.remove('hidden');
 
-            try {
-                const response = await fetch(tool.endpoint, {
-                    method: 'POST',
-                    body: formData,
-                });
+           try {
+    const response = await fetch(tool.endpoint, {
+        method: 'POST',
+        body: formData,
+    });
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(errorText || `HTTP error! status: ${response.status}`);
-                }
+    if (!response.ok) {
+        // This part now reads the detailed JSON error from the server
+        const errorData = await response.json();
+        throw new Error(`Server Error: ${errorData.message} (Details: ${errorData.error})`);
+    }
 
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const downloadBtn = document.getElementById('download-btn');
-                const contentDisposition = response.headers.get('content-disposition');
-                let filename = 'download';
-                if (contentDisposition) {
-                    const filenameMatch = contentDisposition.match(/filename="(.+?)"/);
-                    if (filenameMatch.length === 2)
-                        filename = filenameMatch[1];
-                }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const downloadBtn = document.getElementById('download-btn');
+    const contentDisposition = response.headers.get('content-disposition');
+    let filename = 'download';
+    if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+?)"/);
+        if (filenameMatch && filenameMatch.length === 2)
+            filename = filenameMatch[1];
+    }
 
-                downloadBtn.href = url;
-                downloadBtn.download = filename;
-                
-                processingSection.classList.add('hidden');
-                downloadSection.classList.remove('hidden');
+    downloadBtn.href = url;
+    downloadBtn.download = filename;
+    
+    processingSection.classList.add('hidden');
+    downloadSection.classList.remove('hidden');
 
-            } catch (error) {
-                console.error('Upload failed:', error);
-                alert(`An error occurred: ${error.message}`);
-                // Reset UI
-                processingSection.classList.add('hidden');
-                uploadBox.classList.remove('hidden');
-                if (tool.needsPassword) {
-                   passwordSection.classList.remove('hidden');
-                }
-            }
-        }
+} catch (error) {
+    console.error('Processing failed:', error);
+    // This alert will now show the SPECIFIC error message!
+    alert(`An error occurred: ${error.message}`);
+    
+    // Reset UI
+    processingSection.classList.add('hidden');
+    downloadSection.classList.add('hidden');
+    uploadBox.classList.remove('hidden');
+    if (tool.needsPassword) {
+       passwordSection.classList.remove('hidden');
+    }
+}
+                  }
     }
 });
