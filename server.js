@@ -44,7 +44,7 @@ const performLibreOfficeConversion = async (res, file, outputExtension) => {
     const outputDir = path.dirname(inputPath);
     const expectedOutputPath = path.join(outputDir, outputFilename);
 
-    const command = `soffice --headless --convert-to ${outputExtension} --outdir "${outputDir}" "${inputPath}"`;
+    const command = `/usr/bin/libreoffice --headless --convert-to ${outputExtension} --outdir "${outputDir}" "${inputPath}"`;
 
     exec(command, async (error, stdout, stderr) => {
         if (error) {
